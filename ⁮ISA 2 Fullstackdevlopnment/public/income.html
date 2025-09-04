@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Expense Tracker - Income</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; background: #f8f9fa; display: flex; }
+    .sidebar { width: 220px; background: #4a3aff; color: #fff; height: 100vh; padding-top: 20px; position: fixed; }
+    .sidebar h2 { text-align: center; margin-bottom: 30px; }
+    .sidebar a { display: block; padding: 15px; color: #fff; text-decoration: none; transition: background 0.3s; }
+    .sidebar a:hover { background: #372dcc; }
+    .content { margin-left: 220px; padding: 20px; flex: 1; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    button { background: #372dcc; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; }
+    button:hover { background: #372dcc; }
+    select { padding: 8px; border-radius: 6px; border: 1px solid #ddd; }
+
+    .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); justify-content: center; align-items: center; }
+    .modal-content { background: #fff; padding: 20px; border-radius: 12px; width: 400px; position: relative; }
+    .modal-content h2 { margin-bottom: 20px; }
+    .modal-content label { display: block; margin-top: 10px; font-weight: bold; }
+    .modal-content input { width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #ddd; border-radius: 8px; }
+    .close { position: absolute; right: 15px; top: 15px; font-size: 20px; cursor: pointer; }
+    .submit-btn { margin-top: 15px; width: 100%; padding: 12px; background: #372dcc; color: white; border: none; border-radius: 8px; cursor: pointer; }
+    .submit-btn:hover { background: #372dcc; }
+
+    ul { list-style: none; padding: 0; }
+    li { background: #fff; margin: 10px 0; padding: 10px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); display: flex; justify-content: space-between; }
+
+    
+    .chart-container { background:#fff; padding:20px; border-radius:12px; margin-bottom:20px; box-shadow:0 2px 8px rgba(0,0,0,0.1); }
+    .chart-container h3 { margin-bottom:15px; color:#444; display:flex; justify-content:space-between; align-items:center; }
+    .chart-wrapper { height:260px; }
+  </style>
+</head>
+<body>
+ 
+  <div class="sidebar">
+    <h2><i class="fa-solid fa-wallet"></i> Tracker</h2>
+    <a href="home.html"><i class="fa-solid fa-chart-line"></i> Dashboard</a>
+    <a href="income.html"><i class="fa-solid fa-arrow-trend-up"></i> Income</a>
+    <a href="expence.html"><i class="fa-solid fa-arrow-trend-down"></i> Expense</a>
+    <a href="#" onclick="logout()"><i class="fa-solid fa-right-from-bracket"></i> Logout</a>
+  </div>
+
+  <div class="content">
+    <div class="topbar">
+      <h1>Income</h1>
+      <button id="openModal">+ Add Income</button>
+    </div>
+
+  
+    <div class="chart-container">
+      <h3>
+        Income Overview
+        <select id="groupBy">
+          <option value="day">Last 7 Days</option>
+          <option value="week">Last 7 Weeks</option>
+          <option value="month">Last 7 Months</option>
+          <option value="year">Last 7 Years</option>
+        </select>
+      </h3>
+      <div class="chart-wrapper">
+        <canvas id="incomeChart"></canvas>
+      </div>
+    </div>
+
+
+    <h3>Income Sources</h3>
+    <ul id="incomeList"></ul>
+  </div>
+
+  <div class="modal" id="incomeModal">
+    <div class="modal-content">
+      <span class="close" id="closeModal">&times;</span>
+      <h2>Add Income</h2>
+      <form id="incomeForm">
+        <label>Income Source</label>
+        <input type="text" id="source" placeholder="Freelance, Salary, etc" required />
+        <label>Amount</label>
+        <input type="number" id="amount" placeholder="Enter amount" required />
+        <label>Date</label>
+        <input type="date" id="date" required />
+        <button class="submit-btn" type="submit">Add Income</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    
+    const loggedInUser = JSON.parse(sessionStorage.getItem("loggedInUser"));
+    if (!loggedInUser) {
+      alert("Please login first!");
+      window.location.href = "login.html";
+    }
+
+    const modal = document.getElementById("incomeModal");
+    const openModalBtn = document.getElementById("openModal");
+    const closeModalBtn = document.getElementById("closeModal");
+    const incomeForm = document.getElementById("incomeForm");
+    const incomeList = document.getElementById("incomeList");
+    const groupBySelect = document.getElementById("groupBy");
+
+    openModalBtn.onclick = () => modal.style.display = "flex";
+    closeModalBtn.onclick = () => modal.style.display = "none";
+    window.onclick = (e) => { if(e.target === modal) modal.style.display = "none"; };
+
+    function getTransactions() {
+      return JSON.parse(sessionStorage.getItem("transactions")) || [];
+    }
+    function saveTransactions(transactions) {
+      sessionStorage.setItem("transactions", JSON.stringify(transactions));
+    }
+
+    function renderIncomes() {
+      const transactions = getTransactions().filter(t => t.email === loggedInUser.email && t.amount > 0);
+      incomeList.innerHTML = "";
+      transactions.forEach(t => {
+        const li = document.createElement("li");
+        li.innerHTML = `<span>${t.text} - ₹${t.amount} (${t.date})</span>
+                        <button onclick="deleteIncome(${t.id})">❌</button>`;
+        incomeList.appendChild(li);
+      });
+      renderChart(transactions);
+    }
+
+    function groupTransactions(transactions, groupBy) {
+      const grouped = {};
+      transactions.forEach(t => {
+        const d = new Date(t.date);
+        let key;
+        if (groupBy === "day") {
+          key = d.toISOString().split("T")[0]; // YYYY-MM-DD
+        } else if (groupBy === "week") {
+          const week = Math.ceil(d.getDate() / 7);
+          key = `${d.getFullYear()}-W${week}`;
+        } else if (groupBy === "month") {
+          key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+        } else if (groupBy === "year") {
+          key = `${d.getFullYear()}`;
+        }
+        grouped[key] = (grouped[key] || 0) + t.amount;
+      });
+      return Object.entries(grouped).sort((a,b) => new Date(a[0]) - new Date(b[0]));
+    }
+
+    function renderChart(transactions) {
+      const groupBy = groupBySelect.value;
+      const grouped = groupTransactions(transactions, groupBy);
+      const labels = grouped.map(g => g[0]);
+      const data = grouped.map(g => g[1]);
+
+      const ctx = document.getElementById("incomeChart").getContext("2d");
+      if (window.incomeChartInstance) window.incomeChartInstance.destroy();
+
+      window.incomeChartInstance = new Chart(ctx, {
+        type: "bar",
+        data: { labels: labels, datasets: [{ label: "Income", data: data, backgroundColor: "#4a3aff" }] },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { 
+            x: { grid: { display: false } }, 
+            y: { grid: { display: false }, ticks: { display: false } }
+          }
+        }
+      });
+    }
+
+    incomeForm.addEventListener("submit", e => {
+      e.preventDefault();
+      const newIncome = {
+        id: Date.now(),
+        email: loggedInUser.email,
+        text: document.getElementById("source").value,
+        amount: +document.getElementById("amount").value,
+        date: document.getElementById("date").value
+      };
+      const transactions = getTransactions();
+      transactions.push(newIncome);
+      saveTransactions(transactions);
+      renderIncomes();
+      modal.style.display = "none";
+      incomeForm.reset();
+    });
+
+    function deleteIncome(id) {
+      let transactions = getTransactions();
+      transactions = transactions.filter(t => t.id !== id);
+      saveTransactions(transactions);
+      renderIncomes();
+    }
+
+    function logout() {
+      sessionStorage.removeItem("loggedInUser");
+      window.location.href = "login.html";
+    }
+
+    groupBySelect.addEventListener("change", renderIncomes);
+    renderIncomes();
+  </script>
+</body>
+</html>
